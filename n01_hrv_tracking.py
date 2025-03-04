@@ -7,14 +7,15 @@ import matplotlib
 import scipy.signal 
 import os
 import pandas as pd
-from sklearn import pipeline
-from sklearn.model_selection import GridSearchCV
-from sklearn.preprocessing import RobustScaler
 import xarray as xr
 import neurokit2 as nk
 import mne
 
-
+from sklearn.model_selection import train_test_split
+from sklearn import svm
+from sklearn import metrics
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 import joblib 
 import seaborn as sns
@@ -22,9 +23,8 @@ import pandas as pd
 
 import gc
 
-from progress.bar import IncrementalBar
-
-from n0_analysis_functions import *
+from n00_config import *
+from n00_analysis_functions import *
 
 debug = False
 
@@ -38,7 +38,7 @@ debug = False
 
 def load_data_stress_relax():
 
-    os.chdir('/home/jules/smb4k/CRNLDATA/crnldata/cmo/multisite/DATA_MANIP/HRV_Tracking/data/')
+    os.chdir(path_data)
     
     file_to_open = [file_i for file_i in os.listdir() if file_i.find('.vhdr') != -1]
 
@@ -57,6 +57,10 @@ def load_data_stress_relax():
 
     #### verif
     if debug:
+        for dataset in load_data:
+            print(f"dataset : {load_data[dataset]['data'].shape}")
+
+
         plt.plot(load_data[1][0])
         plt.show()
 
@@ -120,7 +124,7 @@ def load_data_stress_relax():
     #### adjust ecg
     for file_i in load_data.keys():
         if file_i == 'hrv_stress_1':
-            load_data[file_i]['data'][0,:] *= -1
+            load_data[sujet_i][0,:] = load_data[sujet_i][0,:]*-1
 
         if debug:
             plt.plot(load_data[1][0])
@@ -257,8 +261,8 @@ def hrv_tracker(ecg, win_size, srate, srate_resample_hrv, compute_PSD=False):
 
 
 #sujet_i = 1
-#ecg, win_size, srate, srate_resample_hrv, classifier, metric_used, odor_trig_n_bpm, labels_dict = ecg_test, win_size, srate, srate_resample_hrv, model, labels_used, odor_trig_n_bpm, labels_dict
-def hrv_tracker_svm(ecg, win_size, srate, srate_resample_hrv, classifier, metric_used, odor_trig_n_bpm, labels_dict, compute_PSD=False):
+#ecg, win_size, srate, srate_resample_hrv, classifier, odor_trig_win, metric_used = data_ecg_stress[f'hrv_tracker_prediction_{sujet_i}']['data'][0,:], 30000, srate, srate_resample_hrv, clf, 10, labels_used
+def hrv_tracker_svm(ecg, win_size, srate, srate_resample_hrv, classifier, metric_used, odor_trig_n_bpm, compute_PSD=False):
 
     #### load cR
     ecg = scipy.signal.detrend(ecg)
@@ -305,16 +309,16 @@ def hrv_tracker_svm(ecg, win_size, srate, srate_resample_hrv, classifier, metric
         df_res = ecg_analysis_homemade_stats(ecg[int(ecg_cR_sliding_win[0]*srate):int(ecg_cR_sliding_win[-1]*srate)], srate, srate_resample_hrv, fig_token=False)
         df_res = df_res[metric_used]
         predictions = classifier.predict(df_res.values)
-        trig_odor = [labels_dict['FR_CV']]
+        trig_odor = [1]
     times = [ecg_cR[cR_initial]]
 
     #### progress bar
-    bar = IncrementalBar('Countdown', max = len(ecg_cR)-cR_initial)
+    #bar = IncrementalBar('Countdown', max = len(ecg_cR)-cR_initial)
 
     #### sliding on other cR
     for cR_i in range(len(ecg_cR)-cR_initial):
 
-        bar.next()
+        #bar.next()
 
         cR_i += cR_initial
 
@@ -328,21 +332,17 @@ def hrv_tracker_svm(ecg, win_size, srate, srate_resample_hrv, classifier, metric
         df_res = pd.concat([df_res, df_slide], axis=0)
 
         if predictions.shape[0] >= odor_trig_n_bpm:
-            trig_odor_win = predictions.copy()[-odor_trig_n_bpm:]
-            trig_odor_win[trig_odor_win == labels_dict['RD_SV']] = labels_dict['FR_CV']
-            trig_odor_pred_i = np.round(np.mean(trig_odor_win))
-
-            if trig_odor_pred_i != labels_dict['RD_FV']:
-                trig_odor.append(labels_dict['FR_CV'])
+            trig_odor_mean = np.round(np.mean(predictions[-odor_trig_n_bpm:]))
+            if trig_odor_mean >= 1.5:
+                trig_odor.append(2)
             else:
-                trig_odor.append(labels_dict['RD_FV'])
-        
+                trig_odor.append(1)
         else:
-            trig_odor.append(labels_dict['FR_CV'])
+            trig_odor.append(1)
 
         times.append(ecg_cR[cR_i])
 
-    bar.finish()
+    #bar.finish()
 
     return df_res, times, predictions, trig_odor
 
@@ -359,8 +359,7 @@ def get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, 
     df_allsujet = {}
     for sujet_i in data_ecg_stress.keys():
 
-        _ecg = data_ecg_stress[sujet_i]['data'][0, :]
-        df_res, times = hrv_tracker(_ecg, win_size, srate, srate_resample_hrv, compute_PSD=False)
+        df_res, times = hrv_tracker(data_ecg_stress[sujet_i]['data'][0, :], win_size, srate, srate_resample_hrv, compute_PSD=False)
         df_allsujet[sujet_i] = {}
         df_allsujet[sujet_i]['tracker'] = [df_res, times]
 
@@ -554,69 +553,91 @@ def get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, 
 
 if __name__ == '__main__':
 
-
-    from sklearn.model_selection import train_test_split
-    from sklearn.svm import SVC
-    from sklearn import metrics
-    from sklearn.decomposition import PCA
-    
-    from sklearn.model_selection import GridSearchCV
-    from sklearn.preprocessing import LabelEncoder
-    from sklearn.preprocessing import StandardScaler, RobustScaler
-
-    from sklearn.pipeline import make_pipeline, Pipeline
-
-    from sklearn.metrics import confusion_matrix
-
-
-
-
-    ########################
-    ######## PARAMS ########
-    ########################
-
-    sujet = 1
-
-    srate = 1000
-    srate_resample_hrv = 10
-    win_size_sec = 30
-    odor_trig_n_bpm = 75
-    win_size = int(win_size_sec*srate)
-    jitter = 0
-
-    labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
-    # labels_used = ['HRV_MeanNN','HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
-    labels_used = ['HRV_MeanNN','HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
-
-
     
     ########################################
     ######## LOAD DATA STRESS ########
     ########################################
-
+    
+    
+    #### load data
     data_ecg_stress = load_data_stress_relax()
-    df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, 0)
-
-    X_train = df_allsujet[f'hrv_tracker_train_{sujet}']['tracker'][0].values
-    y_train_name_labels = df_allsujet[f'hrv_tracker_train_{sujet}']['labels_names']
-    y_train = LabelEncoder().fit_transform(y_train_name_labels)
-    y_labels = np.unique(df_allsujet[f'hrv_tracker_train_{sujet}']['labels_names'])
-
-    labels_dict = {key:value for (key,value) in zip(y_labels, range(y_labels.shape[0]))}
-
-    target_test = LabelEncoder().fit_transform(df_allsujet[f'hrv_tracker_prediction_{sujet}']['labels_names'])
-
-    ecg_train = data_ecg_stress[f'hrv_tracker_train_{sujet}']['data'][0,:]
-    ecg_test = data_ecg_stress[f'hrv_tracker_prediction_{sujet}']['data'][0,:]
-
+    
+    
 
 
     ########################################
-    ######## IDENTIFY JITTER ########
+    ######## METRIC EVOLUTION ########
     ########################################
+
+    srate = 1000
+    srate_resample_hrv = 10
+    win_size_sec = 60
+    jitter = 0
+
+    df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, jitter)
+
+
+    #metric_i = df_res.columns.values[0]
+
+    sujet_i = 1
+    for metric_i in df_allsujet.columns.values:
+        times = np.arange(data_ecg_stress[sujet_i][0].shape[0])/srate
+        scales = {'max' : [], 'min' : []}
+
+        plt.plot(times, zscore(scipy.signal.detrend(data_ecg_stress[sujet_i][1:])).reshape(-1), label=f'respi')
+        plt.plot(df_allsujet[sujet_i][1], zscore(df_allsujet[sujet_i][0][metric_i].values), label=f'ecg')
+        
+        scales['max'].append(np.max(df_allsujet[sujet_i][0][metric_i].values))
+        scales['min'].append(np.min(df_allsujet[sujet_i][0][metric_i].values))
+        #plt.vlines(order_times, ymin=np.min(scales['min']) ,ymax=np.max(scales['max']), colors='r')
+        plt.legend()
+        plt.title(metric_i)
+        plt.show()
+
+
+
+
+
+
+
+    
+    ################################
+    ######## PCA WITH JITTER ########
+    ################################
+
+    srate = 1000
+    srate_resample_hrv = 10
+    win_size_sec = 60
+    jitter = 0
+
+    df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, jitter)
+
+    labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    labels_used = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    #labels_used = ['HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+
+    #### plot protocol
+    plt.plot(df_allsujet['hrv_tracker_train_1']['tracker'][1], df_allsujet['hrv_tracker_train_1']['labels_numeric'])
+    plt.show()
+
+    plt.plot(df_allsujet['hrv_tracker_prediction_1']['tracker'][1], df_allsujet['hrv_tracker_prediction_1']['labels_numeric'])
+    plt.show()
+
+    #### plot one metric
+    plt.plot(df_allsujet['hrv_tracker_prediction_1']['tracker'][1], df_allsujet['hrv_tracker_prediction_1']['tracker'][0]['HRV_SDNN'].values)
+    plt.title('HRV_SDNN')
+    plt.show()
+
+
+
+    #### PCA
+    data_set = 'hrv_tracker_prediction_1'
+    x = df_allsujet[data_set]['tracker'][0][labels_used].values
 
     pca = PCA(n_components=2)
-    principalComponents = pca.fit_transform(X_train)
+    principalComponents = pca.fit_transform(x)
+
+    pca.explained_variance_ratio_
 
     #### plot
     plt.figure()
@@ -626,56 +647,66 @@ if __name__ == '__main__':
     targets = ['FR_CV', 'RD_FV', 'RD_SV']
     colors = ['r', 'g', 'b']
     for target, color in zip(targets,colors):
-        mask = np.where(y_train_name_labels[-X_train.shape[0]:] == target)[0]
+        mask = np.where(df_allsujet[data_set]['labels_names'] == target)[0]
         plt.scatter(principalComponents[mask,0], principalComponents[mask,1], c = color, s = 50, label=target)
     plt.legend()
     plt.show()
 
-    #### apply jitter
-    label_jitter = y_train_name_labels[-X_train.shape[0]:]
-    n_jitter = 15
-    label_jitter = np.concatenate([np.array(['FR_CV']*n_jitter), label_jitter[:-n_jitter]])
     
-    #### plot
-    for jitter_i in range(10):
+    #### check coeef for PCA
+    coeff = np.transpose(pca.components_)
+
+    n = coeff.shape[0]
+    for i in range(n):
+        plt.arrow(0, 0, coeff[i,0], coeff[i,1],color = 'r',alpha = 0.2, width=1e-4)
+        plt.text(coeff[i,0]* 1.15, coeff[i,1] * 1.15, labels_used[i], color = 'g', ha = 'center', va = 'center')
+    plt.xlabel("PC{}".format(1))
+    plt.ylabel("PC{}".format(2))
+    plt.show()
+
+
+
     
-        if jitter_i == 0:
-            label_jitter = y_train_name_labels[-X_train.shape[0]:]
-        else:
-            label_jitter = np.concatenate([np.array(['FR_CV']*n_jitter), label_jitter[:-n_jitter]])
+    
+    
+    
+    
+    ################################
+    ######## PCA WITH TIME ########
+    ################################
 
-        plt.figure()
-        plt.xlabel('Principal Component - 1')
-        plt.ylabel('Principal Component - 2')
-        plt.title(f"PCA : {jitter_i}")
-        targets = ['FR_CV', 'RD_FV', 'RD_SV']
-        colors = ['r', 'g', 'b']
-        for target, color in zip(targets,colors):
-            mask = np.where(label_jitter == target)[0]
-            plt.scatter(principalComponents[mask,0], principalComponents[mask,1], c = color, s = 50, label=target)
-        plt.legend()
-        plt.show()
+
+    data_set = 'hrv_tracker_prediction_1'
+
+    labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    labels_used = ['HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+
+    x = df_allsujet[data_set]['tracker'][0][labels_used].values
+
+    #### PCA
+    pca = PCA(n_components=2)
+    principalComponents = pca.fit_transform(x)
 
     #### plot
-    time_chunk = 30
-    time_chunk_list = np.arange(0, int(ecg_train.shape[0]/srate), time_chunk)
+    time_chunk = 60
+    time_chunk_list = np.arange(0, int(data_ecg_stress[data_set]['data'].shape[1]/srate), time_chunk)
 
     # time_chunk_i = 1
-    for time_chunk_i, time_chunk_val in enumerate(time_chunk_list):
+    for time_chunk_i, _ in enumerate(time_chunk_list):
         plt.figure()
         plt.xlabel('Principal Component - 1')
         plt.ylabel('Principal Component - 2')
         plt.title("PCA")
         if time_chunk_i == 0:
-            mask = np.where(np.array(df_allsujet[f'hrv_tracker_train_{sujet}']['tracker'][1]) <= time_chunk_val)[0]
+            mask = np.where(np.array(df_allsujet[data_set]['tracker'][1]) <= time_chunk_list[time_chunk_i])[0]
         elif time_chunk_i == len(time_chunk_list)-1:
-            mask = np.where(np.array(df_allsujet[f'hrv_tracker_train_{sujet}']['tracker'][1]) >= time_chunk_val)[0]
+            mask = np.where(np.array(df_allsujet[data_set]['tracker'][1]) >= time_chunk_list[time_chunk_i])[0]
         else:
-            mask = np.where((np.array(df_allsujet[f'hrv_tracker_train_{sujet}']['tracker'][1]) >= time_chunk_val) & (np.array(df_allsujet[f'hrv_tracker_train_{sujet}']['tracker'][1]) <= time_chunk_list[time_chunk_i+1]))[0]
+            mask = np.where((np.array(df_allsujet[data_set]['tracker'][1]) >= time_chunk_list[time_chunk_i]) & (np.array(df_allsujet[data_set]['tracker'][1]) <= time_chunk_list[time_chunk_i+1]))[0]
 
-        mask_FR_CV = np.where(df_allsujet[f'hrv_tracker_train_{sujet}']['labels_names'].reshape(-1)[mask] == 'FR_CV')[0]
-        mask_RD_FV = np.where(df_allsujet[f'hrv_tracker_train_{sujet}']['labels_names'].reshape(-1)[mask] == 'RD_FV')[0]
-        mask_RD_SV = np.where(df_allsujet[f'hrv_tracker_train_{sujet}']['labels_names'].reshape(-1)[mask] == 'RD_SV')[0]
+        mask_FR_CV = np.where(df_allsujet[data_set]['labels_names'].reshape(-1)[mask] == 'FR_CV')[0]
+        mask_RD_FV = np.where(df_allsujet[data_set]['labels_names'].reshape(-1)[mask] == 'RD_FV')[0]
+        mask_RD_SV = np.where(df_allsujet[data_set]['labels_names'].reshape(-1)[mask] == 'RD_SV')[0]
         
         plt.scatter(principalComponents[mask,0][mask_FR_CV], principalComponents[mask,1][mask_FR_CV], c = 'r', s = 25, label='FR_CV')
         plt.scatter(principalComponents[mask,0][mask_RD_FV], principalComponents[mask,1][mask_RD_FV], c = 'g', s = 25, label='RD_FV')
@@ -686,48 +717,111 @@ if __name__ == '__main__':
         plt.legend()
         plt.show(block=False)
 
-        plt.pause(2)
+        plt.pause(1)
 
         plt.close()
 
 
-    ################################
-    ######## PIPELINE ########
-    ################################
     
-    #### make pipeline
-    #SVC().get_params()
-    steps = [('scaler', StandardScaler()), ('SVM', SVC())]
-    pipeline = Pipeline(steps)
 
-    #### find best model
-    params = {
 
-    # 'SVM__kernel' : ['linear', 'poly', 'rbf', 'sigmoid'], 
-    'SVM__kernel' : ['linear', 'poly', 'rbf'],    
-    'SVM__C' : [0.001, 0.1, 1, 10, 100, 10e5], 
-    'SVM__gamma' : [0.1, 0.01]
 
-    }
 
-    grid = GridSearchCV(pipeline, param_grid=params, cv=5, n_jobs=6)
-    grid.fit(X_train, y_train)
-    grid.best_score_
-    model = grid.best_estimator_
 
-    #### plot confusion matrix
-    X_train_cm, X_test_cm, y_train_cm, y_test_cm = train_test_split(X_train, y_train, test_size=0.4, random_state=5)
-    conf_mat = confusion_matrix(y_test_cm, model.predict(X_test_cm))
-    fig, ax = plt.subplots()
-    ax.matshow(conf_mat)
-    for i in range(conf_mat.shape[0]):
-        for j in range(conf_mat.shape[0]):
-            c = conf_mat[j, i]
-            ax.text(i, j, str(c), va='center', ha='center')
-    ax.set_title(f'Confusion matrix : {np.round(model.score(X_test_cm, y_test_cm), 4)}')
-    ax.set_yticklabels(['']+y_labels.tolist())
-    #fig.show()
-    plt.close('all')
+
+
+
+
+
+    ################################
+    ######## SVM TEST ########
+    ################################
+
+    #### get data
+    srate = 1000
+    srate_resample_hrv = 10
+    win_size_sec = 30
+
+    labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    labels_used = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+
+    score_all_sujet = {}
+    jitter_list = [0, 30, 60, 90]
+
+    #jitter = 0
+    for jitter in jitter_list:
+
+        print(f'compute jitter : {jitter}')
+
+        score_all_sujet[jitter] = {}
+    
+        df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, jitter)
+
+        #### params
+        all_sujet = ['hrv_stress_1', 'hrv_stress_2', 'hrv_tracker_prediction_1', 'hrv_tracker_prediction_2']
+        sujet_i = 'hrv_tracker_prediction_1'
+
+        def conpute_svm_score(sujet_i):
+
+            score_sujet_i = {}
+            
+            #### prepare data
+            labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+            labels_used = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+
+            target_svm = df_allsujet[sujet_i]['labels_numeric']
+            data_svm = df_allsujet[sujet_i]['tracker'][0][labels_used].values
+
+            data_train, data_test, target_train, target_test = train_test_split(data_svm, target_svm, test_size=0.4,random_state=109) # 70% training and 30% test
+
+            #### apply svm
+            for kernel_i in ['linear', 'poly', 'rbf']:
+
+                print(f'{sujet_i} : {kernel_i}')
+
+                if kernel_i == 'rbf':
+                    clf = svm.SVC(kernel=kernel_i, gamma=2, C=1)
+                else:
+                    clf = svm.SVC(kernel=kernel_i)
+
+                clf.fit(data_train, target_train)
+
+                #Predict the response for test dataset
+                target_pred = clf.predict(data_test)
+
+                #Import scikit-learn metrics module for accuracy calculation
+                accuracy_svm = metrics.accuracy_score(target_test, target_pred)
+
+                score_sujet_i[kernel_i] = np.round(accuracy_svm, 2)
+
+            return score_sujet_i
+
+        compilation_score_sujet = joblib.Parallel(n_jobs = 6, prefer = 'processes')(joblib.delayed(conpute_svm_score)(sujet_i) for sujet_i in all_sujet)
+
+        #### reorganize data
+        for sujet_i, sujet in enumerate(all_sujet):
+            score_all_sujet[jitter][sujet] = compilation_score_sujet[sujet_i]
+
+    #### create dataframe
+    df_svm = pd.DataFrame(columns=['sujet', 'jitter', 'kernel', 'score'])
+    for sujet_i in all_sujet:
+        for kernel_i in ['linear', 'poly', 'rbf']:
+            for jitter in jitter_list:
+                data_dict = {'sujet':[sujet_i], 'jitter':[jitter], 'kernel':[kernel_i], 'score':[score_all_sujet[jitter][sujet][kernel_i]]}
+                df_svm = pd.concat([df_svm, pd.DataFrame(data=data_dict)])
+
+    #### plot
+    g = sns.catplot(x="jitter", y="score", hue="sujet", col="kernel", kind="point", data=df_svm)
+    plt.show()
+
+
+
+
+
+
+
+
+
 
 
 
@@ -736,20 +830,313 @@ if __name__ == '__main__':
     ######## SVM PREDICTION ########
     ################################
 
+    #### params
+    all_sujet = ['hrv_stress_1', 'hrv_stress_2', 'hrv_tracker_prediction_1', 'hrv_tracker_prediction_2', 'hrv_tracker_train_1', 'hrv_tracker_train_2']
+    sujet_i = 2
+
+    srate = 1000
+    srate_resample_hrv = 10
+    win_size_sec = 30
+    odor_trig_n_bpm = 75
+    win_size = int(win_size_sec*srate)
+    jitter = 0
+
+
+    labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    # labels_used = ['HRV_MeanNN','HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    labels_used = ['HRV_MeanNN', 'HRV_S']
+            
+    #### select data
+    df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, jitter)
+    data_train = df_allsujet[f'hrv_tracker_train_{sujet_i}']['tracker'][0][labels_used].values
+    target_train = df_allsujet[f'hrv_tracker_train_{sujet_i}']['labels_numeric']
+
+    df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, 0)
+    data_test = df_allsujet[f'hrv_tracker_prediction_{sujet_i}']['tracker'][0][labels_used].values
+    target_test = df_allsujet[f'hrv_tracker_prediction_{sujet_i}']['labels_numeric']
+
+    #### prepare svm
+    clf = svm.SVC(kernel='linear')
+    # clf = svm.SVC(kernel='poly') 
+    # clf = svm.SVC(kernel='rbf', gamma=2, C=1)
+    
+    clf.fit(data_train, target_train)
+
 
     #### get values
-    df_res, times, predictions, trig_odor = hrv_tracker_svm(ecg_test, win_size, srate, srate_resample_hrv, model, labels_used, odor_trig_n_bpm, labels_dict)
+    df_res, times, predictions, trig_odor = hrv_tracker_svm(data_ecg_stress[f'hrv_tracker_prediction_{sujet_i}']['data'][0,:], win_size, srate, srate_resample_hrv, clf, labels_used, odor_trig_n_bpm, compute_PSD=False)
+
 
     #### plot predictions
     plt.plot(target_test, label='real')
     plt.plot(predictions, label='prediction')
     plt.plot(trig_odor, label='odor_trig')
-    plt.title(f'sujet{sujet}_win{win_size_sec}_jitter{jitter}_metric{len(labels_used)}')
+    plt.title(f'sujet{sujet_i}_win{win_size_sec}_jitter{jitter}_metric{len(labels_used)}.png')
     plt.legend()
     # plt.show()
-
+    
     os.chdir('/home/jules/smb4k/CRNLDATA/crnldata/cmo/multisite/DATA_MANIP/HRV_Tracking/results/')
-    plt.savefig(f'sujet{sujet}_win{win_size_sec}_jitter{jitter}_metric{len(labels_used)}.png')
+    plt.savefig(f'sujet{sujet_i}_win{win_size_sec}_jitter{jitter}_metric{len(labels_used)}.png')
     plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ########################################
+    ######## SVM PREDICTION SCORES ########
+    ########################################
+
+    #### params
+    all_sujet = ['hrv_stress_1', 'hrv_stress_2', 'hrv_tracker_prediction_1', 'hrv_tracker_prediction_2', 'hrv_tracker_train_1', 'hrv_tracker_train_2']
+    sujet_i = 1
+
+    srate = 1000
+    srate_resample_hrv = 10
+    odor_trig_n_bpm = 75
+    win_size_sec_list = [30, 60, 120]
+
+    labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    labels_used = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+
+
+    def compute_svm_score_prediction(sujet_i, srate, srate_resample_hrv, win_size_sec, jitter, kernel, labels_used):
+
+        print(f'sujet{sujet_i} win{win_size_sec} jitter{jitter} {kernel}')
+        
+        win_size = int(win_size_sec*srate)
+
+        #### prepare data
+        df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, jitter)
+        data_train = df_allsujet[f'hrv_tracker_train_{sujet_i}']['tracker'][0][labels_used].values
+        target_train = df_allsujet[f'hrv_tracker_train_{sujet_i}']['labels_numeric']
+
+        df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, 0)
+        target_test = df_allsujet[f'hrv_tracker_prediction_{sujet_i}']['labels_numeric']
+
+        #### apply svm
+        if kernel == 'rbf':
+            clf = svm.SVC(kernel=kernel, gamma=2, C=1)
+        else:
+            clf = svm.SVC(kernel=kernel)
+        
+        clf.fit(data_train, target_train)
+
+        #### get values
+        df_res, times, predictions, trig_odor = hrv_tracker_svm(data_ecg_stress[f'hrv_tracker_prediction_{sujet_i}']['data'][0,:], win_size, srate, srate_resample_hrv, clf, labels_used, odor_trig_n_bpm, compute_PSD=False)
+
+        #Import scikit-learn metrics module for accuracy calculation
+        accuracy_svm = metrics.accuracy_score(target_test, predictions)
+
+        score_sujet_i = np.round(accuracy_svm, 2)
+
+        #### prepare df
+        df_res = pd.DataFrame(data={'sujet':[f'sujet{sujet_i}'], 'win_size':[win_size_sec], 'jitter':[jitter], 'labels':[len(labels_used)], 'kernel':[kernel], 'score':[score_sujet_i]})
+
+        return df_res
+
+    #### generate params
+    params_fun = []
+    for sujet_i in [1, 2]:
+        for kernel_i in ['linear', 'poly', 'rbf']:
+            for win_size_sec_list_i in win_size_sec_list:
+                for jitter_i in [0, 30, win_size_sec_list_i]:
+                    params_fun.append([sujet_i, srate, srate_resample_hrv, win_size_sec_list_i, jitter_i, kernel_i, labels_used])
+
+    #### compute
+    #compute_svm_score_prediction(sujet_i, srate, srate_resample_hrv, win_size_sec_list_i, jitter_i, kernel_i, labels_used)
+    compilation_score_sujet = joblib.Parallel(n_jobs = 6, prefer = 'processes')(joblib.delayed(compute_svm_score_prediction)(sujet_i, srate, srate_resample_hrv, win_size_sec_list_i, jitter_i, kernel_i, labels_used) for sujet_i, srate, srate_resample_hrv, win_size_sec_list_i, jitter_i, kernel_i, labels_used in params_fun)
+
+    #### extract data
+    df_res = pd.DataFrame(columns=['sujet', 'win_size', 'jitter', 'labels', 'kernel', 'score']) 
+    
+    for df_i in compilation_score_sujet:
+        df_res = pd.concat([df_res, df_i])
+
+    #### plot
+    os.chdir('/home/jules/smb4k/CRNLDATA/crnldata/cmo/multisite/DATA_MANIP/HRV_Tracking/results/')
+
+    sujet_i = 2
+    g = sns.catplot(x="jitter", y="score", hue="win_size", col='kernel', kind="point", data=df_res[df_res['sujet'] == f'sujet{sujet_i}'])
+    # plt.show()
+
+    plt.savefig(f'comparison score sujet{sujet_i}.png')
+    plt.show()
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ########################################################
+    ######## DECISION FUNCTION FOR TWO FEATURES ########
+    ########################################################
+
+    #### params
+    srate = 1000
+    srate_resample_hrv = 10
+    win_size_sec = 60
+    win_size = int(win_size_sec*srate)
+
+    df_allsujet = get_data_tracking(data_ecg_stress, srate, srate_resample_hrv, win_size_sec, jitter)
+
+    sujet_i = 1
+            
+    target_svm = df_allsujet[f'hrv_stress_{sujet_i+1}']['labels_numeric']
+    data_svm = df_allsujet[f'hrv_stress_{sujet_i+1}']['tracker'][0].values
+
+    #### select features
+    labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+    feat_A = 'HRV_MeanNN'
+    feat_B = 'HRV_pNN50'
+
+    feat_A_i = labels.index(feat_A)
+    feat_B_i = labels.index(feat_B)
+
+        
+    h = 0.02  # step size in the mesh
+    # preprocess dataset, split into training and test part
+    X, y = data_svm[:, [feat_A_i, feat_B_i]], target_svm
+    X = StandardScaler().fit_transform(X)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=42)
+
+    x_min, x_max = X[:, 0].min(), X[:, 0].max()
+    y_min, y_max = X[:, 1].min(), X[:, 1].max()
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, h), np.arange(y_min, y_max, h))
+
+    # just plot the dataset first
+    cm = plt.cm.RdBu
+    cm_bright = matplotlib.colors.ListedColormap(["#FF0000", "#0000FF"])
+
+    plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train, cmap=cm_bright, edgecolors="k")
+    # Plot the testing points
+    plt.scatter(X_test[:, 0], X_test[:, 1], c=y_test, cmap=cm_bright, alpha=0.6, edgecolors="k")
+
+    plt.show()
+
+
+
+    clf = svm.SVC(kernel='linear')
+    # clf = svm.SVC(kernel='rbf', gamma=2, C=1)
+
+
+    clf.fit(X_train, y_train)
+    score = clf.score(X_test, y_test)
+
+
+    # Plot the decision boundary. For that, we will assign a color to each
+    # point in the mesh [x_min, x_max]x[y_min, y_max].
+    Z = clf.decision_function(np.c_[xx.ravel(), yy.ravel()])
+
+    # Put the result into a color plot
+    Z = Z.reshape(xx.shape)
+    plt.contourf(xx, yy, Z, cmap=cm, alpha=0.8)
+
+    # Plot the training points
+    plt.scatter(X_train[:, 0], X_train[:, 1], c=y_train, cmap=cm_bright, edgecolors="k")
+    # Plot the testing points
+    plt.scatter(X_test[:, 0], X_test[:, 1], c=y_test, cmap=cm_bright, edgecolors="k", alpha=0.6)
+
+    
+    
+    plt.show()
+    
+
+    print(score)
+
+
+
+
+
+    ########################################
+    ######## IDENTIFY BEST PAIR ########
+    ########################################
+
+
+
+    #### params
+    all_sujet = ['hrv_stress_1', 'hrv_stress_2', 'hrv_tracker_prediction_1', 'hrv_tracker_prediction_2', 'hrv_tracker_train_1', 'hrv_tracker_train_2']
+    sujet_i = 'hrv_tracker_train_1'
+
+    srate = 1000
+    srate_resample_hrv = 10
+    win_size_sec = 60
+    win_size = int(win_size_sec*srate)
+
+    best_pairs = {}
+    for sujet_i in all_sujet:
+
+        #### load data  
+        target_svm = df_allsujet[sujet_i]['labels_numeric']
+        data_svm = df_allsujet[sujet_i]['tracker'][0].values
+
+        #### compute features
+        score_pair = np.zeros((len(labels), len(labels)))
+
+        labels = ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S']
+        for A_i, feat_A in enumerate(labels):
+            for B_i, feat_B in enumerate(labels):
+
+                feat_A_i = labels.index(feat_A)
+                feat_B_i = labels.index(feat_B)
+
+                    
+                h = 0.02  # step size in the mesh
+                # preprocess dataset, split into training and test part
+                X, y = data_svm[:, [feat_A_i, feat_B_i]], target_svm
+                X = StandardScaler().fit_transform(X)
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=42)
+
+                #clf = svm.SVC(kernel='linear')
+                clf = svm.SVC(kernel='rbf', gamma=2, C=1)
+
+
+                clf.fit(X_train, y_train)
+                score = clf.score(X_test, y_test)
+
+                score_pair[A_i, B_i] = score
+
+        best_pairs[sujet_i] = {}
+
+        best_pairs[sujet_i]['mat'] = score_pair
+        best_feat_A, best_feat_B = labels[np.where(score_pair == score_pair.max())[0][0]], labels[np.where(score_pair == score_pair.max())[0][1]]
+        best_pairs[sujet_i]['best'] = f'best pair : {best_feat_A} & {best_feat_B} with : {score_pair.max()}'
+        
+
+    #### plot
+    for sujet_i in all_sujet:
+
+        fig, ax = plt.subplots()
+        ax.matshow(best_pairs[sujet_i]['mat'])
+        ax.set_yticks(np.arange(len(labels)))
+        ax.set_yticklabels(labels)
+        ax.set_title(f'{sujet_i} = \n' + best_pairs[sujet_i]['best'])
+        plt.show()
 
 

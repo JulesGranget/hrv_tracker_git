@@ -11,8 +11,8 @@ import mne
 import glob
 import neo
 
-from n0_analysis_functions import *
-from n0_config import *
+from n00_analysis_functions import *
+from n00_config import *
 
 from sklearn.model_selection import train_test_split
 from sklearn import svm

@@ -16,7 +16,7 @@ import pingouin as pg
 import xarray as xr
 import neurokit2 as nk
 
-from n0_analysis_functions import *
+from n00_analysis_functions import *
 
 debug = False
 

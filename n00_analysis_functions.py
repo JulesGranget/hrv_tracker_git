@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import scipy.signal 
 import os
 import pandas as pd
-from bycycle.cyclepoints import find_extrema
 import seaborn as sns
 import pingouin as pg
 import xarray as xr
@@ -185,58 +184,6 @@ def get_fig_poincarre(RRI):
     plt.ylim(.600,1.)
 
     return fig
-    
-#### DeltaHR
-
-#RRI, srate_resample, f_RRI, condition = result_struct[keys_result[0]][1], srate_resample, f_RRI, cond 
-def get_dHR(RRI_resample, srate_resample, f_RRI):
-    
-    times = np.arange(0,len(RRI_resample))/srate_resample
-
-        # stairs method
-    #RRI_stairs = np.array([])
-    #len_cR = len(cR) 
-    #for RR in range(len(cR)) :
-    #    if RR == 0 :
-    #        RRI_i = cR[RR+1]/srate - cR[RR]/srate
-    #        RRI_stairs = np.append(RRI_stairs, [RRI_i*1e3 for i in range(int(cR[RR+1]))])
-    #    elif RR != 0 and RR != len_cR-1 :
-    #        RRI_i = cR[RR+1]/srate - cR[RR]/srate
-    #        RRI_stairs = np.append(RRI_stairs, [RRI_i*1e3 for i in range(int(cR[RR+1] - cR[RR]))])
-    #    elif RR == len_cR-1 :
-    #        RRI_stairs = np.append(RRI_stairs, [RRI_i*1e3 for i in range(int(len(ecg) - cR[RR]))])
-
-
-    peaks, troughs = find_extrema(RRI_resample, srate_resample, f_RRI)
-    peaks_RRI, troughs_RRI = RRI_resample[peaks], RRI_resample[troughs]
-    peaks_troughs = np.stack((peaks_RRI, troughs_RRI), axis=1)
-
-    fig_verif = plt.figure()
-    plt.plot(times, RRI_resample)
-    plt.vlines(peaks/srate_resample, ymin=min(RRI_resample), ymax=max(RRI_resample), colors='b')
-    plt.vlines(troughs/srate_resample, ymin=min(RRI_resample), ymax=max(RRI_resample), colors='r')
-    #plt.show()
-
-    dHR = np.diff(peaks_troughs/srate_resample, axis=1)*1e3
-
-    fig_dHR = plt.figure()
-    ax = plt.subplot(211)
-    plt.plot(times, RRI_resample*1e3)
-    plt.title('RRI')
-    plt.ylabel('ms')
-    plt.subplot(212, sharex=ax)
-    plt.plot(troughs/srate_resample, dHR)
-    plt.hlines(np.median(dHR), xmin=min(times), xmax=max(times), colors='m', label='median = {:.3f}'.format(np.median(dHR)))
-    plt.legend()
-    plt.title('dHR')
-    plt.ylabel('ms')
-    plt.vlines(peaks/srate_resample, ymin=0, ymax=0.01, colors='b')
-    plt.vlines(troughs/srate_resample, ymin=0, ymax=0.01, colors='r')
-    plt.tight_layout()
-    #plt.show()
-
-
-    return fig_verif, fig_dHR
 
 
 def ecg_analysis_homemade(ecg_i, srate, srate_resample_hrv, fig_token=False):
@@ -284,17 +231,13 @@ def ecg_analysis_homemade(ecg_i, srate, srate_resample_hrv, fig_token=False):
 
     #### for figures
 
-    #### dHR
-    if fig_token:
-        fig_verif, fig_dHR = get_dHR(RRI_resample, srate_resample_hrv, f_RRI)
-
     #### fig
     if fig_token:
         fig_RRI = get_fig_RRI_IFR(ecg_i, ecg_cR, RRI, IFR, srate, srate_resample_hrv)
         fig_PSD = get_fig_PSD_LF_HF(Pxx, hzPxx, VLF, LF, HF) 
         fig_poincarre = get_fig_poincarre(RRI)
 
-        fig_list = [fig_RRI, fig_PSD, fig_poincarre, fig_verif, fig_dHR]
+        fig_list = [fig_RRI, fig_PSD, fig_poincarre]
 
         return hrv_metrics_homemade, fig_list
 
@@ -616,57 +559,7 @@ def get_fig_poincarre(RRI):
 
     return fig
     
-#### DeltaHR
 
-#RRI, srate_resample, f_RRI, condition = result_struct[keys_result[0]][1], srate_resample, f_RRI, cond 
-def get_dHR(RRI_resample, srate_resample, f_RRI):
-    
-    times = np.arange(0,len(RRI_resample))/srate_resample
-
-        # stairs method
-    #RRI_stairs = np.array([])
-    #len_cR = len(cR) 
-    #for RR in range(len(cR)) :
-    #    if RR == 0 :
-    #        RRI_i = cR[RR+1]/srate - cR[RR]/srate
-    #        RRI_stairs = np.append(RRI_stairs, [RRI_i*1e3 for i in range(int(cR[RR+1]))])
-    #    elif RR != 0 and RR != len_cR-1 :
-    #        RRI_i = cR[RR+1]/srate - cR[RR]/srate
-    #        RRI_stairs = np.append(RRI_stairs, [RRI_i*1e3 for i in range(int(cR[RR+1] - cR[RR]))])
-    #    elif RR == len_cR-1 :
-    #        RRI_stairs = np.append(RRI_stairs, [RRI_i*1e3 for i in range(int(len(ecg) - cR[RR]))])
-
-
-    peaks, troughs = find_extrema(RRI_resample, srate_resample, f_RRI)
-    peaks_RRI, troughs_RRI = RRI_resample[peaks], RRI_resample[troughs]
-    peaks_troughs = np.stack((peaks_RRI, troughs_RRI), axis=1)
-
-    fig_verif = plt.figure()
-    plt.plot(times, RRI_resample)
-    plt.vlines(peaks/srate_resample, ymin=min(RRI_resample), ymax=max(RRI_resample), colors='b')
-    plt.vlines(troughs/srate_resample, ymin=min(RRI_resample), ymax=max(RRI_resample), colors='r')
-    #plt.show()
-
-    dHR = np.diff(peaks_troughs/srate_resample, axis=1)*1e3
-
-    fig_dHR = plt.figure()
-    ax = plt.subplot(211)
-    plt.plot(times, RRI_resample*1e3)
-    plt.title('RRI')
-    plt.ylabel('ms')
-    plt.subplot(212, sharex=ax)
-    plt.plot(troughs/srate_resample, dHR)
-    plt.hlines(np.median(dHR), xmin=min(times), xmax=max(times), colors='m', label='median = {:.3f}'.format(np.median(dHR)))
-    plt.legend()
-    plt.title('dHR')
-    plt.ylabel('ms')
-    plt.vlines(peaks/srate_resample, ymin=0, ymax=0.01, colors='b')
-    plt.vlines(troughs/srate_resample, ymin=0, ymax=0.01, colors='r')
-    plt.tight_layout()
-    #plt.show()
-
-
-    return fig_verif, fig_dHR
 
 #ecg_i = ecg[int(ecg_cR_sliding_win[0]*srate):int(ecg_cR_sliding_win[-1]*srate)]
 def ecg_analysis_homemade_stats(ecg_i, srate, srate_resample_hrv, fig_token=False):
@@ -710,16 +603,12 @@ def ecg_analysis_homemade_stats(ecg_i, srate, srate_resample_hrv, fig_token=Fals
 
     #### for figures
 
-    #### dHR
-    if fig_token:
-        fig_verif, fig_dHR = get_dHR(RRI_resample, srate_resample_hrv, f_RRI)
-
     #### fig
     if fig_token:
         fig_RRI = get_fig_RRI_IFR(ecg_i, ecg_cR, RRI, IFR, srate, srate_resample_hrv)
         fig_poincarre = get_fig_poincarre(RRI)
 
-        fig_list = [fig_RRI, fig_poincarre, fig_verif, fig_dHR]
+        fig_list = [fig_RRI, fig_poincarre]
 
         return hrv_metrics_homemade, fig_list
 
