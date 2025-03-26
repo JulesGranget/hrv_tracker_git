@@ -38,8 +38,7 @@ import gc
 
 from n00_config_params import *
 from n00bis_config_analysis_functions import *
-from n01bis_prep_info import *
-from n04_precompute_hrv import *
+from n00ter_prep_info import *
 
 debug = False
 
@@ -52,16 +51,11 @@ debug = False
 ################################
 
     
-def load_ecg_sig(sujet, odor_i, band_prep):
+def load_ecg_sig(sujet, odor):
 
-    os.chdir(os.path.join(path_prep, sujet, 'sections'))
+    os.chdir(os.path.join(path_data, 'allsujet'))
     
-    raw = mne.io.read_raw_fif(f'{sujet}_{odor_i}_allcond_{band_prep}.fif', preload=True, verbose='critical')
-
-    data = raw.get_data()
-    ecg = data[chan_list.index('ECG'), :]
-
-    del raw
+    ecg = np.load(f'{sujet}_{odor}_ecg.npy')
 
     return ecg
 

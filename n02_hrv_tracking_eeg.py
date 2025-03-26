@@ -306,13 +306,8 @@ def hrv_tracker_svm(ecg, win_size, srate, srate_resample_hrv, classifier, metric
         trig_odor = [labels_dict['FR_CV']]
     times = [ecg_cR[cR_initial]]
 
-    #### progress bar
-    bar = IncrementalBar('Countdown', max = len(ecg_cR)-cR_initial)
-
     #### sliding on other cR
     for cR_i in range(len(ecg_cR)-cR_initial):
-
-        bar.next()
 
         cR_i += cR_initial
 
@@ -339,8 +334,6 @@ def hrv_tracker_svm(ecg, win_size, srate, srate_resample_hrv, classifier, metric
             trig_odor.append(labels_dict['FR_CV'])
 
         times.append(ecg_cR[cR_i])
-
-    bar.finish()
 
     return df_res, times, predictions, trig_odor
 

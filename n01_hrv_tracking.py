@@ -23,7 +23,7 @@ import pandas as pd
 
 import gc
 
-from n00_config import *
+from n00_config_params import *
 from n00_analysis_functions import *
 
 debug = False
