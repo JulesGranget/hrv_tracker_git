@@ -34,7 +34,7 @@ import gc
 
 from n00_config_params import *
 from n00bis_config_analysis_functions import *
-from n03_precompute_hrv_tracker import *
+from n03_precompute_individual_model import *
 
 debug = False
 
@@ -58,8 +58,6 @@ def get_classifier_allsujet_hrv_tracker_o_ref(hrv_tracker_mode):
     ######## PARAMS ########
     ########################
 
-    band_prep = 'wb'
-
     train_size = 0.8
 
     odor = 'o'
@@ -78,7 +76,7 @@ def get_classifier_allsujet_hrv_tracker_o_ref(hrv_tracker_mode):
 
         print_advancement(sujet_i, len(sujet_list), [25, 50, 75])
 
-        ecg = load_ecg_sig(sujet, odor, band_prep)
+        ecg = load_ecg_sig(sujet, odor)
         ecg_allsujet = np.append(ecg_allsujet, ecg)
 
         label_vec, trig = get_label_vec(sujet, odor, ecg, hrv_tracker_mode)
@@ -127,7 +125,7 @@ def get_classifier_allsujet_hrv_tracker_o_ref(hrv_tracker_mode):
     
     lines = [f"{key} {value}" for key, value in classifier_params.items()]
 
-    os.chdir(os.path.join(path_results, 'allplot', 'HRV'))
+    os.chdir(os.path.join(path_precompute, 'predictions', 'allsujet'))
 
     with open('classifier_params.txt', 'w') as f:
         for line in lines:
@@ -147,8 +145,6 @@ def allsujet_hrv_tracker_ref_o(classifier, hrv_tracker_mode):
     ########################
 
     n_pnts_trim_resample = (len(conditions) + len(conditions) -1) * points_per_cond
-
-    band_prep = 'wb'
 
     xr_dict = {'sujet' : sujet_list, 'odor' : np.array(odor_list), 'type' : ['prediction', 'label', 'trig_odor'], 'times' : np.arange(n_pnts_trim_resample)}
     xr_hrv_tracker = xr.DataArray(data=np.zeros((sujet_list.shape[0], len(odor_list), 3, n_pnts_trim_resample)), dims=xr_dict.keys(), coords=xr_dict.values())
@@ -181,7 +177,7 @@ def allsujet_hrv_tracker_ref_o(classifier, hrv_tracker_mode):
         for odor_i, odor in enumerate(odor_list):
 
             #### load data
-            ecg = load_ecg_sig(sujet, odor, band_prep)
+            ecg = load_ecg_sig(sujet, odor)
 
             df_hrv, times = get_data_hrv_tracker(ecg, prms_tracker)
             label_vec, trig = get_label_vec(sujet, odor, ecg, hrv_tracker_mode)
@@ -290,7 +286,6 @@ def allsujet_hrv_tracker_ref_o(classifier, hrv_tracker_mode):
 
                     predictions_dict[odor][trim_type][data_type] = data_load[data_type_i]
 
-        os.chdir(os.path.join(path_precompute, sujet, 'HRV'))
         for odor_i, odor in enumerate(odor_list):
             xr_hrv_tracker.loc[sujet, odor, 'prediction', :] = predictions_dict[odor]['trim']['predict']
             xr_hrv_tracker.loc[sujet, odor, 'label', :] = predictions_dict[odor]['trim']['real']
@@ -299,7 +294,7 @@ def allsujet_hrv_tracker_ref_o(classifier, hrv_tracker_mode):
             xr_hrv_tracker_score.loc[sujet, odor] = predictions_dict[odor]['trim']['score']
 
     #### save results
-    os.chdir(os.path.join(path_precompute, 'allsujet', 'HRV'))
+    os.chdir(os.path.join(path_precompute, 'predictions', 'allsujet'))
 
     xr_hrv_tracker.to_netcdf(f'{hrv_tracker_mode}_o_ref_allsujettrain_hrv_tracker.nc')
     xr_hrv_tracker_score.to_netcdf(f'{hrv_tracker_mode}_o_ref_allsujettrain_hrv_tracker_score.nc')
@@ -316,6 +311,12 @@ def allsujet_hrv_tracker_ref_o(classifier, hrv_tracker_mode):
 
 def hrv_tracker_compilation_allsujet(hrv_tracker_mode):
 
+    os.chdir(os.path.join(path_precompute, 'predictions', 'allsujet'))
+
+    if os.path.exists(f'{hrv_tracker_mode}_o_ref_allsujettrain_hrv_tracker.nc'):
+        print('ALREADY COMPUTED')
+        return
+    
     classifier = get_classifier_allsujet_hrv_tracker_o_ref(hrv_tracker_mode)
     allsujet_hrv_tracker_ref_o(classifier, hrv_tracker_mode)
 
@@ -333,8 +334,11 @@ if __name__ == '__main__':
     hrv_tracker_mode = '2classes'
     #hrv_tracker_mode = '4classes'
 
+    list_params = [['2classes'], ['4classes']]
+
     #hrv_tracker_compilation_allsujet(hrv_tracker_mode)
-    execute_function_in_slurm_bash('n17_precompute_allsujet_hrv_tracker', 'hrv_tracker_compilation_allsujet', [hrv_tracker_mode])
+    execute_function_in_slurm_bash('n04_precompute_global_model', 'hrv_tracker_compilation_allsujet', list_params)
+    #sync_folders__push_to_crnldata()
 
 
 

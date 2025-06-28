@@ -31,25 +31,25 @@ perso_repo_computation = False
 
 conditions = ['FR_CV_1', 'MECA', 'CO2', 'FR_CV_2']
 
-sujet_list =                    np.array(['01PD','03VN','05LV','06EF','07PB','08DM','09TA',
+sujet_list =                    np.array(['01PD','03VN','06EF','07PB','08DM','09TA',
                             '11FA','12BD','13FP','14MD','15LG','16GM','17JR','18SE','19TM','20TY','21ZV',
-                            '23LF','24TJ','26MN','28NT','29SC','30AR','31HJ','32CM','33MA'])
+                            '23LF','24TJ','26MN','28NT','29SC','30AR','32CM','33MA'])
 
-sujet_list_rev =                np.array(['PD01','VN03','LV05','EF06','PB07','DM08','TA09',
+sujet_list_rev =                np.array(['PD01','VN03','EF06','PB07','DM08','TA09',
                             'FA11','BD12','FP13','MD14','LG15','GM16','JR17','SE18','TM19','TY20','ZV21',
-                            'LF23','TJ24','MN26','NT28','SC29','AR30','HJ31','CM32','MA33'])
+                            'LF23','TJ24','MN26','NT28','SC29','AR30','CM32','MA33'])
 
 # ['02MJ','27BD','10BH'] signal problems
 # ['04GB', '25DF'] dypnea induction failed
 
-sujet_best_list =               np.array(['BD12','CM32','FA11','GM16','HJ31','JR17','MA33','MN26',
+sujet_best_list =               np.array(['BD12','CM32','FA11','GM16','JR17','MA33','MN26',
                             'PD01','SC29','TA09','TJ24','TM19','VN03','ZV21'])
-sujet_best_list_rev =           np.array(['12BD','32CM','11FA','16GM','31HJ','17JR','33MA','26MN',
+sujet_best_list_rev =           np.array(['12BD','32CM','11FA','16GM','17JR','33MA','26MN',
                             '01PD','29SC','09TA','24TJ','19TM','03VN','21ZV'])
 
-sujet_no_respond =              np.array(['LV05','EF06','PB07','DM08','FP13','MD14','LG15',
+sujet_no_respond =              np.array(['EF06','PB07','DM08','FP13','MD14','LG15',
                             'TY20','LF23','NT28','AR30','SE18'])
-sujet_no_respond_rev =          np.array(['05LV','06EF','07PB','08DM','13FP','14MD','15LG',
+sujet_no_respond_rev =          np.array(['06EF','07PB','08DM','13FP','14MD','15LG',
                             '20TY','23LF','28NT','30AR','18SE'])
 
 
@@ -203,44 +203,6 @@ n_core_slurms = 10
 
 
 
-
-########################################
-######## PATH DEFINITION ########
-########################################
-
-import socket
-import os
-import platform
- 
-PC_OS = platform.system()
-PC_ID = socket.gethostname()
-
-if PC_ID == 'jules-precisiont1700':
-
-    PC_working = 'jules-precisiont1700'
-    path_main_workdir = '/home/jules/smb4k/CRNLDATA/crnldata/cmo/Projets/HRV_Tracker/Scripts'
-    path_general = '/home/jules/smb4k/CRNLDATA/crnldata/cmo/Projets/HRV_Tracker'
-    path_memmap = '/home/jules/smb4k/CRNLDATA/crnldata/cmo/Projets/HRV_Tracker/Mmap'
-    n_core = 6
-
-else:
-
-    PC_working = 'crnl_cluster'
-    path_main_workdir = '/crnldata/cmo/Projets/HRV_Tracker/Scripts'
-    path_general = '/crnldata/cmo/Projets/HRV_Tracker'
-    path_memmap = '/mnt/data/julesgranget'
-    n_core = 15
-
-path_data = os.path.join(path_general, 'Data')
-path_prep = os.path.join(path_general, 'Analyses', 'preprocessing')
-path_precompute = os.path.join(path_general, 'Analyses', 'precompute') 
-path_results = os.path.join(path_general, 'Analyses', 'results') 
-path_respfeatures = os.path.join(path_general, 'Analyses', 'results') 
-
-
-
-
-
 ################################
 ######## HRV ANALYSIS ########
 ################################
@@ -264,9 +226,11 @@ f_RRI = (.1, .5)
 
 cond_label_tracker = {'FR_CV_1' : 1, 'MECA' : 2, 'CO2' : 3, 'FR_CV_2' : 1}
 
+train_percentage_values = [0.5, 0.6, 0.7, 0.8]
+
 
 prms_tracker = {
-'metric_list' : ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_COV'],
+'metric_list' : ['HRV_MeanNN', 'HRV_SDNN', 'HRV_RMSSD', 'HRV_pNN50', 'HRV_SD1', 'HRV_SD2', 'HRV_S', 'HRV_COV', 'HRV_MAD', 'HRV_MEDIAN'],
 'win_size_sec' : 30,
 'odor_trig_n_bpm' : 75,
 'jitter' : 0,

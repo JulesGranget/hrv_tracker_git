@@ -220,7 +220,7 @@ def sync_folders__push_to_mnt(clusterexecution=True):
     folder_to_push_to = {path_data : os.path.join(path_mntdata, 'Data'), path_precompute : os.path.join(path_mntdata, 'Analyses', 'precompute'), 
                          path_prep : os.path.join(path_mntdata, 'Analyses', 'preprocessing'), path_main_workdir : os.path.join(path_mntdata, 'Scripts'),
                          path_slurm : os.path.join(path_mntdata, 'Scripts_slurm'), 
-                         os.path.join(path_results, 'RESPI', 'respfeatures') : os.path.join(path_mntdata, 'Analyses', 'results', 'RESPI', 'respfeatures')}
+                         path_results : os.path.join(path_mntdata, 'Analyses', 'results')}
 
     if clusterexecution:
             
@@ -282,7 +282,8 @@ def sync_folders__push_to_crnldata(clusterexecution=True):
 
     #### dont push scripts from mnt to crnldata
     folder_to_push_to = {path_data : os.path.join(path_mntdata, 'Data'), path_precompute : os.path.join(path_mntdata, 'Analyses', 'precompute'), 
-                         path_prep : os.path.join(path_mntdata, 'Analyses', 'preprocessing'), path_slurm : os.path.join(path_mntdata, 'Scripts_slurm')}
+                         path_prep : os.path.join(path_mntdata, 'Analyses', 'preprocessing'), path_slurm : os.path.join(path_mntdata, 'Scripts_slurm'),
+                         path_results : os.path.join(path_mntdata, 'Analyses', 'results')}
 
     if clusterexecution:
             
@@ -425,7 +426,7 @@ def execute_script_slurm(slurm_bash_script_name):
     subprocess.run([f'sbatch {slurm_bash_script_name}'], shell=True) 
 
 
-#name_script, name_function, params = 'n05_precompute_Cxy', 'precompute_surrogates_coh', [sujet]
+#name_script, name_function, params = 'n03_precompute_hrv_tracker', 'hrv_tracker_no_ref_modify_train', [sujet, hrv_tracker_mode]
 def execute_function_in_slurm_bash(name_script, name_function, params, n_core=15, mem='15G'):
 
     script_path = os.getcwd()
@@ -1228,7 +1229,7 @@ def ecg_analysis_homemade(ecg_i, srate, srate_resample_hrv, fig_token=False):
         return hrv_metrics_homemade
 
 
-
+#RRI = RRI_win
 def get_hrv_metrics_win(RRI):
 
     #### initiate metrics names
